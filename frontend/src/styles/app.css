@@ -1,0 +1,487 @@
+/*
+ * The eztunes app.
+ *
+ * The direction is "the product performs": instead of describing what the
+ * tool does, the page shows the tool doing it. The split map, the track
+ * list and the progress phases are all real, live parts of the interface.
+ *
+ * Layout notes that matter:
+ *   - One vertical alignment carries the page: a column at a third from
+ *     the left. Everything real sits on it.
+ *   - The stage is a flat field of the accent colour with the product's own
+ *     shape cut into its corner by clip-path.
+ *   - Surfaces are told apart by tone, never by a line or a shadow.
+ *   - Rows are separated by space and by a tone step, never by a rule.
+ */
+
+/* ------------------------------------------------------------------ */
+/* the bar                                                            */
+/* ------------------------------------------------------------------ */
+
+.bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1.5rem;
+	padding-block: 1.5rem;
+}
+
+.wordmark {
+	font-family: var(--font-display);
+	font-weight: 500;
+	font-size: 1.0625rem;
+	letter-spacing: -0.03em;
+	text-decoration: none;
+}
+
+.bar-links {
+	display: flex;
+	align-items: center;
+	gap: 1.5rem;
+	font-size: var(--step-small);
+}
+
+.bar-links a {
+	text-decoration: none;
+	color: var(--muted);
+	transition: color var(--t-hover) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.bar-links a:hover {
+		color: var(--ink);
+	}
+}
+
+/* ------------------------------------------------------------------ */
+/* hero                                                               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The headline occupies the upper-left third. The stage sits to the right
+ * and runs off the right edge of the screen. Nothing overlaps the headline.
+ */
+.hero {
+	position: relative;
+	padding-top: clamp(2.5rem, 12vh, 8rem);
+	padding-bottom: clamp(3rem, 8vw, 7rem);
+}
+
+.hero-copy {
+	grid-column: 1 / span 6;
+	position: relative;
+	z-index: 2;
+}
+
+.hero-copy .display {
+	margin-bottom: 1.5rem;
+}
+
+.hero-copy .lead {
+	margin-bottom: 2rem;
+}
+
+.stage {
+	grid-column: 7 / -1;
+	align-self: start;
+	margin-top: clamp(2rem, 8vh, 6rem);
+	margin-right: calc(var(--margin) * -1);
+	padding: clamp(1.75rem, 3vw, 3rem);
+	padding-left: clamp(2.5rem, 7vw, 7rem);
+	background: var(--accent);
+	color: var(--accent-ink);
+	/* The corner is cut with the product's own shape: the notch a fader
+	   leaves in a waveform. It is the only decoration on the page. */
+	clip-path: polygon(
+		6% 0,
+		100% 0,
+		100% 100%,
+		0 100%,
+		0 12%
+	);
+}
+
+.stage-inner {
+	position: relative;
+	z-index: 1;
+}
+
+/*
+ * The fragment on the stage is the product's own interface, so it keeps its
+ * own conventions. The attribute tells the inspector that the rules inside
+ * belong to the product rather than to the page.
+ */
+.fragment {
+	background: var(--bg);
+	color: var(--ink);
+	padding: clamp(1.25rem, 2vw, 1.75rem);
+	max-width: 32rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* the split map                                                      */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The map of a track list: one long band cut into tracks, with the silent
+ * gaps between them left standing. The gaps are what the tool found, so
+ * they are the part drawn in the accent.
+ */
+.splitmap {
+	display: flex;
+	gap: 2px;
+	height: 5rem;
+	align-items: stretch;
+}
+
+.splitmap-track {
+	background: var(--ink);
+	color: var(--bg);
+	display: flex;
+	align-items: flex-end;
+	padding: 0.5rem 0.55rem;
+	overflow: hidden;
+	min-width: 0;
+	transform-origin: left center;
+}
+
+.splitmap-track-unknown {
+	background: var(--muted);
+}
+
+.splitmap-gap {
+	background: var(--accent);
+	flex: 0 0 auto;
+	min-width: 3px;
+}
+
+.splitmap-label {
+	font-size: 0.875rem;
+	line-height: 1.2;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* ------------------------------------------------------------------ */
+/* the track list                                                     */
+/* ------------------------------------------------------------------ */
+
+.tracklist {
+	display: flex;
+	flex-direction: column;
+}
+
+.trackrow {
+	display: grid;
+	grid-template-columns: 2.5rem 1fr auto;
+	gap: 1rem;
+	align-items: baseline;
+	padding: 0.8rem 0.75rem;
+	background: var(--bg);
+}
+
+.trackrow:nth-child(even) {
+	background: var(--surface);
+}
+
+.trackrow-index {
+	font-size: var(--step-small);
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.trackrow-title {
+	font-size: var(--step-body);
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.trackrow-artist {
+	font-size: var(--step-small);
+	color: var(--muted);
+}
+
+.trackrow-length {
+	font-size: var(--step-small);
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------ */
+/* progress                                                           */
+/* ------------------------------------------------------------------ */
+
+.phases {
+	display: flex;
+	gap: 0.4rem;
+	flex-wrap: wrap;
+}
+
+.phase {
+	font-size: var(--step-small);
+	color: var(--muted);
+	padding: 0.3rem 0.7rem;
+	background: var(--surface);
+	transition: color var(--t-ui) ease, background-color var(--t-ui) ease;
+}
+
+.phase-done {
+	color: var(--muted);
+	background: var(--surface-deep);
+}
+
+.phase-current {
+	color: var(--accent-ink);
+	background: var(--accent);
+	font-weight: 500;
+}
+
+/* ------------------------------------------------------------------ */
+/* history                                                            */
+/* ------------------------------------------------------------------ */
+
+.jobs {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+}
+
+.job {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 0.35rem 1.5rem;
+	align-items: baseline;
+	padding: 1rem 1.1rem;
+	background: var(--surface);
+}
+
+.job:nth-child(even) {
+	background: var(--bg);
+}
+
+.job-title {
+	font-size: var(--step-body);
+	overflow-wrap: anywhere;
+}
+
+.job-meta {
+	font-size: var(--step-small);
+	color: var(--muted);
+}
+
+/*
+ * An error is not a note. It gets its own line, in the full ink, at the
+ * body size, so it cannot be missed.
+ */
+.job-error {
+	font-size: var(--step-body);
+	color: var(--ink);
+	grid-column: 1 / -1;
+	max-width: 60ch;
+}
+
+.job-status {
+	font-size: var(--step-small);
+	padding: 0.25rem 0.6rem;
+	background: var(--surface-deep);
+	justify-self: end;
+}
+
+.job-status-done {
+	color: var(--accent-ink);
+	background: var(--accent);
+}
+
+.job-status-failed {
+	color: var(--bg);
+	background: var(--ink);
+}
+
+.job-status-live {
+	color: var(--accent-ink);
+	background: var(--surface-deep);
+}
+
+/* ------------------------------------------------------------------ */
+/* form                                                               */
+/* ------------------------------------------------------------------ */
+
+.form-row {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 1rem;
+}
+
+@media (min-width: 46em) {
+	.form-row {
+		grid-template-columns: 2fr 1fr auto;
+		align-items: end;
+	}
+}
+
+.form-field {
+	display: flex;
+	flex-direction: column;
+}
+
+/* ------------------------------------------------------------------ */
+/* the gate                                                           */
+/* ------------------------------------------------------------------ */
+
+.signin {
+	min-height: 100svh;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	padding-block: clamp(3rem, 10vh, 8rem);
+}
+
+/*
+ * The theme switch sits at the top of the gate, so the mood can be chosen
+ * before there is anything to look at.
+ */
+.signin-bar {
+	position: absolute;
+	top: 1.5rem;
+	right: var(--margin);
+}
+
+.signin-inner {
+	max-width: 30rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* media                                                              */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The pictures: real photographs of the instruments this tool sits next
+ * to, and one clip of a fader travelling between two tracks, which is the
+ * whole idea of the product in a single moving image.
+ */
+.photostrip {
+	display: grid;
+	grid-template-columns: 1.4fr 1fr 1fr;
+	gap: var(--gutter);
+	align-items: start;
+}
+
+@media (max-width: 47.99em) {
+	.photostrip {
+		grid-template-columns: 1fr;
+	}
+}
+
+.photo {
+	position: relative;
+	overflow: hidden;
+	background: var(--surface);
+}
+
+.photo img,
+.photo video {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	aspect-ratio: 4 / 3;
+}
+
+.photo-lede img,
+.photo-lede video {
+	aspect-ratio: 16 / 9;
+}
+
+.photo-caption {
+	font-size: var(--step-small);
+	color: var(--muted);
+	margin-top: 0.6rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* footer                                                             */
+/* ------------------------------------------------------------------ */
+
+.footer {
+	padding-block: clamp(3rem, 7vw, 6rem);
+	background: var(--surface);
+}
+
+.footer-name {
+	font-family: var(--font-display);
+	font-weight: 500;
+	font-size: clamp(2rem, 1rem + 4vw, 4rem);
+	letter-spacing: -0.04em;
+	line-height: 1;
+}
+
+/*
+ * The credits are a paragraph a reader actually reads, so they are set at
+ * the body size rather than as a note. They stay in the muted ink, which
+ * clears 7:1 on the footer's surface.
+ */
+.credits {
+	font-size: var(--step-body);
+	color: var(--muted);
+	max-width: 58ch;
+}
+
+.credits a {
+	text-decoration: underline;
+	text-underline-offset: 0.18em;
+}
+
+/* ------------------------------------------------------------------ */
+/* misc                                                               */
+/* ------------------------------------------------------------------ */
+
+.stack-sm > * + * {
+	margin-top: 0.6rem;
+}
+
+.stack > * + * {
+	margin-top: 1.5rem;
+}
+
+.stack-lg > * + * {
+	margin-top: 3rem;
+}
+
+.empty {
+	color: var(--muted);
+	font-size: var(--step-body);
+}
+
+.error {
+	color: var(--ink);
+	background: var(--surface-deep);
+	padding: 0.75rem 1rem;
+	font-size: var(--step-small);
+}
+
+/*
+ * The hero stacks well before the tablet width.
+ *
+ * At 768px the copy was still sharing a row with the stage, which squeezed
+ * the headline into five lines and left the stage too narrow to use. The
+ * stage is a full-bleed field, so it wants the whole width to itself.
+ */
+@media (max-width: 61.99em) {
+	.hero {
+		padding-top: 2rem;
+	}
+
+	.hero-copy {
+		grid-column: 1 / -1;
+	}
+
+	.stage {
+		grid-column: 1 / -1;
+		margin-top: 2.5rem;
+		margin-right: calc(var(--margin) * -1);
+		padding: 2rem 1.25rem;
+		clip-path: polygon(6% 0, 100% 0, 100% 100%, 0 100%, 0 5%);
+	}
+}
