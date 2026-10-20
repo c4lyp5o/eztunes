@@ -1,0 +1,69 @@
+# Run eztunes in Docker.
+#
+#   cp .env.example .env      (fill in the four required secrets)
+#   docker compose up -d --build
+#
+# Both paths work: `build: .` compiles from source, or drop it and use
+# `image:` to pull the published GHCR build.
+services:
+  eztunes:
+    image: ghcr.io/c4lyp5o/eztunes:latest
+    build: .
+    container_name: eztunes
+    restart: unless-stopped
+
+    # Run as the app user so the data volume stays owned by a real uid.
+    user: "${UID:-1000}:${GID:-1000}"
+
+    ports:
+      # Overridable so a second instance (staging, a test) does not have to
+      # edit this file:  EZTUNES_PORT=5010 docker compose up -d
+      - "${EZTUNES_PORT:-5000}:5000"
+
+    environment:
+      TZ: Asia/Kuala_Lumpur
+
+      # --- the four required secrets ---
+      # These have NO defaults on purpose. The container refuses to start
+      # without them, rather than booting with a guessable credential.
+      EZTUNES_API_TOKEN: ${EZTUNES_API_TOKEN:?set EZTUNES_API_TOKEN in .env}
+      EZTUNES_SESSION_SECRET: ${EZTUNES_SESSION_SECRET:?set EZTUNES_SESSION_SECRET in .env}
+      EZTUNES_INTERNAL_TOKEN: ${EZTUNES_INTERNAL_TOKEN:?set EZTUNES_INTERNAL_TOKEN in .env}
+      AUDD_API_TOKEN: ${AUDD_API_TOKEN:?set AUDD_API_TOKEN in .env}
+
+      # The container must listen on all interfaces for the port mapping to
+      # reach it. Inside the container this is fine; the port is the only
+      # thing exposed on the host.
+      HOST: 0.0.0.0
+      PORT: 5000
+
+      # The worker reaches the server over the container network.
+      BROADCAST_URL: http://127.0.0.1:5000/api/internal/broadcast
+
+      # Storage - the /data volume below.
+      DATA_DIR: /data
+      OUTPUT_DIR: /data/blackhole
+      DB_PATH: /data/eztunes.sqlite
+
+      # The built frontend, served by the server process.
+      FRONTEND_DIR: /app/frontend/dist
+
+      FFMPEG_PATH: /usr/bin/ffmpeg
+
+      # Set to true when a reverse proxy terminates TLS in front of this.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+
+    volumes:
+      # The database and the produced zips. Without this, every restart
+      # loses all job history.
+      - "${EZTUNES_DATA:-./data}:/data"
+
+# Optional: front the app with traefik (uncomment and adjust the host).
+#   networks: { traefik_default: { external: true } }
+#   labels:
+#     - "traefik.enable=true"
+#     - "traefik.http.routers.eztunes.rule=Host(`${EZTUNES_HOST:-tunes.example.com}`)"
+#     - "traefik.http.services.eztunes.loadbalancer.server.port=5000"
+#
+# COOKIE_SECURE must be set to true when traefik serves HTTPS, otherwise the
+# session cookie is sent without the Secure attribute.

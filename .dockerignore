@@ -1,0 +1,46 @@
+# Build context hygiene - keeps secrets and junk out of the image layers.
+#
+# The two that actually matter: .env holds the four secrets, and data/ holds
+# the live database and the produced zips. Neither may ever reach an image.
+
+# secrets / live config
+.env
+**/.env
+*.key
+*.pem
+
+# live data - the database and every produced zip
+/data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+backend/blackhole/
+
+# The bundled Windows ffmpeg/ffprobe binaries. 202MB of Windows executables,
+# useless in a Linux container, and they would blow the image up.
+backend/bin/
+
+# dependencies - reinstalled inside the image
+node_modules/
+**/node_modules/
+
+# build output - the frontend is rebuilt inside the image
+frontend/dist/
+dist/
+
+# VCS / CI / docs
+.git/
+.gitignore
+.gitattributes
+.dockerignore
+Dockerfile
+*.md
+docs/
+
+# local tooling
+logs/
+coverage/
+*.lcov
+.DS_Store
+.vscode/
+.idea/

@@ -10,12 +10,18 @@
 		"dev:worker": "cd backend && bun --watch worker.js",
 		"dev:frontend": "cd frontend && bun dev",
 		"dev": "conc -n \"BACKEND,WORKER,FRONTEND\" -c \"cyan,yellow,magenta\" \"npm run dev:backend\" \"npm run dev:worker\" \"npm run dev:frontend\"",
+		"test": "cd backend && bun test",
 		"test:backend": "cd backend && bun test",
+		"lint": "cd frontend && bun run lint",
 		"build:client": "cd frontend && bun run build",
 		"start": "pm2-runtime start ecosystem.config.js --env production",
 		"stop": "pm2 stop all",
 		"restart": "pm2 restart all",
-		"logs": "pm2 monit"
+		"logs": "pm2 monit",
+		"docker:build": "docker compose build",
+		"docker:up": "docker compose up -d",
+		"docker:down": "docker compose down",
+		"docker:logs": "docker compose logs -f"
 	},
 	"devDependencies": {
 		"concurrently": "^9.2.1"
