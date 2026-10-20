@@ -1,0 +1,72 @@
+# Test gate for eztunes.
+#
+# Runs before the image build. The suite is the real gate: it covers the
+# security properties (unauthenticated access refused, forged cookies
+# rejected, path traversal contained, the sweeper leaving live jobs alone)
+# as well as the ordinary behaviour.
+name: Test
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🧾 Checkout source
+        uses: actions/checkout@v5
+
+      - name: 🍞 Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: 📦 Install dependencies
+        run: |
+          bun install --frozen-lockfile
+          cd frontend && bun install --frozen-lockfile
+
+      - name: 🧪 Backend tests
+        run: cd backend && bun test
+
+      - name: 🎨 Frontend build
+        run: cd frontend && bun run build
+
+      - name: 🔍 Frontend lint
+        run: cd frontend && bun run lint
+
+      - name: 🔐 Secret scan
+        # A credential was committed in the original history. The values
+        # involved have been revoked, and their literals are deliberately
+        # NOT written here: a scan pattern that contains the secret is
+        # itself a disclosure, and it would be committed along with the
+        # fix that removes it.
+        #
+        # So the scan looks for the SHAPE of a credential instead - an
+        # environment variable assigned a long opaque value. That is the
+        # stronger check anyway, because it catches any new credential and
+        # not only the two that are already known.
+        run: |
+          PATTERN="(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY)[A-Z_]*[[:space:]]*=[[:space:]]*[\"']?[A-Za-z0-9_/+-]{20,}"
+          # The two test files hold deliberate long opaque fixtures. They
+          # are named for what they are and carry no real credential.
+          HITS=$(git grep -nIE "$PATTERN" -- . \
+            | grep -vE '^backend/tests/(auth|server)\.test\.js:[0-9]+:' \
+            || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::a credential-shaped literal is present in the tree"
+            echo "$HITS"
+            exit 1
+          fi
+          echo "no credential-shaped literals found"
+
+      - name: 🐳 Build the image
+        # The image build is part of the gate: the Dockerfile has
+        # container-specific constraints (musl yt-dlp, Bun blocking
+        # postinstall scripts) that only show up at build time.
+        run: docker build -t eztunes:ci .

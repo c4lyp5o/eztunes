@@ -57,34 +57,58 @@ ENV YOUTUBE_DL_DIR=/opt/yt-dlp \
     YOUTUBE_DL_SKIP_DOWNLOAD=1 \
     YOUTUBE_DL_SKIP_PYTHON_CHECK=1
 
-# Unprivileged user. The app downloads untrusted media and runs ffmpeg
-# against it, so it must not run as root.
-RUN addgroup -S eztunes && adduser -S eztunes -G eztunes -h /home/eztunes \
- && mkdir -p /data/blackhole /app/logs \
- && chown -R eztunes:eztunes /data /app
+# The app runs as the image's own `bun` user, which the base image already
+# creates at uid/gid 1000. That uid is chosen deliberately: it is what a
+# bind-mounted ./data directory is owned by on the host, so the app can
+# write to it without a chown dance. Creating a separate user here would
+# have to duplicate uid 1000, which the base image has already taken.
+#
+# The app downloads untrusted media and runs ffmpeg against it, so it must
+# not run as root.
+RUN mkdir -p /data/blackhole /app/logs \
+ && chown -R bun:bun /data /app \
+ && chmod 0755 /app /data /data/blackhole
 
 # Backend
-COPY --from=deps --chown=eztunes:eztunes /app/backend/node_modules ./backend/node_modules
-COPY --chown=eztunes:eztunes backend/package.json backend/bun.lock ./backend/
-COPY --chown=eztunes:eztunes backend/*.js ./backend/
-COPY --chown=eztunes:eztunes backend/tests ./backend/tests
-COPY --chown=eztunes:eztunes backend/.env.example ./backend/
+#
+# NOTE the --chmod: `u=rwX,go=rX` is the safe form. A literal 0644 applied to
+# a directory copy strips the EXECUTE bit, and a directory without +x cannot
+# be traversed into - the container then fails with "Script not found:
+# /app/backend/server.js" even though the file is right there. The capital X
+# means "execute only on directories".
+COPY --from=deps --chown=bun:bun --chmod=u=rwX,go=rX /app/backend/node_modules ./backend/node_modules
+COPY --chown=bun:bun --chmod=u=rwX,go=rX backend/package.json backend/bun.lock ./backend/
+COPY --chown=bun:bun --chmod=u=rwX,go=rX backend/*.js ./backend/
+COPY --chown=bun:bun --chmod=u=rwX,go=rX backend/tests ./backend/tests
+COPY --chown=bun:bun --chmod=u=rwX,go=rX backend/.env.example ./backend/
 
 # Frontend bundle - the server serves it directly, so one process is the
 # whole product.
-COPY --from=builder --chown=eztunes:eztunes /app/frontend/dist ./frontend/dist
+COPY --from=builder --chown=bun:bun --chmod=u=rwX,go=rX /app/frontend/dist ./frontend/dist
 
 # Process supervisor. The server and the worker are separate processes
 # sharing one SQLite file; pm2 keeps both alive and restarts them on crash.
-COPY --chown=eztunes:eztunes package.json ./
-COPY --chown=eztunes:eztunes ecosystem.config.js ./
+COPY --chown=bun:bun --chmod=u=rwX,go=rX package.json ./
+COPY --chown=bun:bun --chmod=u=rwX,go=rX ecosystem.config.js ./
 
 # pm2 as the app user. The oven/bun image pins BUN_INSTALL_BIN to a
 # root-owned directory, so redirect the global bin dir to a user-writable
 # one that is already on PATH.
-USER eztunes
-ENV PATH="/home/eztunes/.bun/bin:${PATH}"
-RUN BUN_INSTALL_BIN=/home/eztunes/.bun/bin bun add -g pm2
+USER bun
+ENV HOME=/home/bun \
+    PATH="/home/bun/.bun/bin:${PATH}"
+RUN BUN_INSTALL_BIN=/home/bun/.bun/bin bun add -g pm2
+
+# Prove the tree is actually readable and traversable by the app user before
+# the image is allowed to exist. A directory copied without the execute bit
+# makes pm2 report "Script not found: /app/backend/server.js" while the file
+# is sitting right there - a confusing failure to debug from the logs alone.
+RUN for f in /app/backend/server.js /app/backend/worker.js /app/ecosystem.config.js \
+            /app/frontend/dist/index.html; do \
+      test -r "$f" || { echo "FATAL: $f is not readable by $(id -un)"; exit 1; }; \
+    done \
+ && test -x /app/backend || { echo "FATAL: /app/backend is not traversable"; exit 1; } \
+ && echo "OK: the app tree is readable and traversable by $(id -un)"
 
 ENV PORT=5000 \
     HOST=0.0.0.0 \
