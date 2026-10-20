@@ -19,6 +19,7 @@ import {
 	filterByDuration,
 } from "./silence.js";
 import { mapWithConcurrency } from "./concurrency.js";
+import { PHASES, tracksFromTimestamps } from "./progress.js";
 
 /**
  * How many ffmpeg processes may run at once.
@@ -118,7 +119,8 @@ async function broadcastStatus(
 	jobId,
 	status,
 	progressMsg,
-	resultFileName = null,
+	resultFileName,
+	detail,
 ) {
 	try {
 		logger.info(`[Job ${jobId}] ${progressMsg}`);
@@ -147,6 +149,9 @@ async function broadcastStatus(
 					status,
 					progressMsg,
 					downloadUrl: status === "completed" ? `/api/download/${jobId}` : null,
+					// The structured detail the browser renders. The server
+					// whitelists it before it reaches a socket.
+					detail: detail ?? {},
 				},
 			}),
 		});
@@ -474,6 +479,21 @@ async function sliceAndTagAudio(
 					jobId,
 					"processing",
 					`🎯 Match Found: "${songData.title || `Unknown Track ${trackNumber}`}" by ${songData.artist || artist}`,
+					null,
+					{
+						phase: PHASES.IDENTIFYING,
+						total: totalTracks,
+						// The title is the whole point of the recognition
+						// pass, so it is sent as soon as it is known rather
+						// than at the end of the batch.
+						tracks: [
+							{
+								index: i + 1,
+								title: songData.title || `Unknown Track ${trackNumber}`,
+								artist: songData.artist || artist,
+							},
+						],
+					},
 				);
 			} else {
 				await broadcastStatus(
@@ -481,6 +501,8 @@ async function sliceAndTagAudio(
 					jobId,
 					"processing",
 					`🤷 No match for track ${trackNumber}`,
+					null,
+					{ phase: PHASES.IDENTIFYING, total: totalTracks },
 				);
 			}
 			return songData;
@@ -555,6 +577,7 @@ async function sliceAndTagAudio(
 			} catch (err) {
 				logger.error(`Failed to cut Track ${trackNumber}: ${err.message}`);
 			}
+
 		},
 	);
 }
@@ -595,6 +618,8 @@ async function processAudioPipeline(videoUrl, jobId, clientId, expectedTracks) {
 		jobId,
 		"processing",
 		"Downloading metadata and video from YouTube",
+		null,
+		{ phase: PHASES.DOWNLOADING },
 	);
 	const info = await youtubedl(videoUrl, {
 		dumpSingleJson: true,
@@ -614,7 +639,9 @@ async function processAudioPipeline(videoUrl, jobId, clientId, expectedTracks) {
 
 	const audioArtist = info?.uploader || "Unknown Artist";
 	const audioAlbum = info?.title || "Unknown Album";
-	await broadcastStatus(clientId, jobId, "processing", "Done downloading!");
+	await broadcastStatus(clientId, jobId, "processing", "Done downloading!", null, {
+		phase: PHASES.DETECTING,
+	});
 
 	let audioTimestamps = [];
 
@@ -624,6 +651,8 @@ async function processAudioPipeline(videoUrl, jobId, clientId, expectedTracks) {
 			jobId,
 			"processing",
 			`Found ${info.chapters.length} official chapters!`,
+			null,
+			{ phase: PHASES.DETECTING, total: info.chapters.length },
 		);
 		audioTimestamps = info.chapters.map((ch) => ({
 			start: ch.start_time,
@@ -636,6 +665,8 @@ async function processAudioPipeline(videoUrl, jobId, clientId, expectedTracks) {
 			jobId,
 			"processing",
 			"No chapters found. Analyzing silences.",
+			null,
+			{ phase: PHASES.DETECTING },
 		);
 		audioTimestamps = await profileAndDetectSilences(
 			audioPath,
@@ -644,6 +675,21 @@ async function processAudioPipeline(videoUrl, jobId, clientId, expectedTracks) {
 			expectedTracks,
 		);
 	}
+
+	// The boundaries are known now. Send them so the page can draw the
+	// waveform and the cuts while the audio is still being cut.
+	await broadcastStatus(
+		clientId,
+		jobId,
+		"processing",
+		`Found ${audioTimestamps.length} track boundaries`,
+		null,
+		{
+			phase: PHASES.IDENTIFYING,
+			total: audioTimestamps.length,
+			tracks: tracksFromTimestamps(audioTimestamps),
+		},
+	);
 
 	await sliceAndTagAudio(
 		audioPath,
@@ -654,8 +700,10 @@ async function processAudioPipeline(videoUrl, jobId, clientId, expectedTracks) {
 		clientId,
 		jobId,
 	);
-
-	await broadcastStatus(clientId, jobId, "processing", "Zipping everything up");
+	await broadcastStatus(clientId, jobId, "processing", "Zipping everything up", null, {
+		phase: PHASES.ZIPPING,
+		total: audioTimestamps.length,
+	});
 
 	await rm(audioPath).catch(() => {});
 	const zipName = `job_${jobId}_playlist.zip`;

@@ -11,6 +11,7 @@ import {
 	safeEqual,
 } from "./auth.js";
 import { safeJoin } from "./paths.js";
+import { sanitizeProgress } from "./progress.js";
 
 /**
  * The eztunes HTTP server.
@@ -186,6 +187,9 @@ const server = Bun.serve({
 								typeof payload.downloadUrl === "string"
 									? payload.downloadUrl.slice(0, 200)
 									: null,
+							// The structured detail is whitelisted on the
+							// way out, so the browser can trust its shape.
+							detail: sanitizeProgress(payload.detail),
 						}),
 					);
 				}
