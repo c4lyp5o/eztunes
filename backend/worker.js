@@ -519,7 +519,7 @@ async function sliceAndTagAudio(
 		`Cutting and tagging ${totalTracks} tracks...`,
 	);
 
-	await mapWithConcurrency(
+	const recognised = await mapWithConcurrency(
 		timestamps,
 		FFMPEG_CONCURRENCY,
 		async (track, i) => {
@@ -578,8 +578,23 @@ async function sliceAndTagAudio(
 				logger.error(`Failed to cut Track ${trackNumber}: ${err.message}`);
 			}
 
+			// What the page shows: the named track, with its own boundaries.
+			return {
+				index: i + 1,
+				title: songTitle,
+				artist: safeArtist,
+				album: safeAlbum,
+				start: Math.round(track.start * 100) / 100,
+				end: track.end === null ? null : Math.round(track.end * 100) / 100,
+				length:
+					track.end === null
+						? null
+						: Math.round((track.end - track.start) * 100) / 100,
+			};
 		},
 	);
+
+	return recognised;
 }
 
 async function recognizeSong(filePath) {
@@ -691,7 +706,7 @@ async function processAudioPipeline(videoUrl, jobId, clientId, expectedTracks) {
 		},
 	);
 
-	await sliceAndTagAudio(
+	const recognisedTracks = await sliceAndTagAudio(
 		audioPath,
 		audioTimestamps,
 		audioOutputDir,
@@ -724,6 +739,22 @@ async function processAudioPipeline(videoUrl, jobId, clientId, expectedTracks) {
 		archive.finalize();
 	});
 	await rm(audioOutputDir, { recursive: true, force: true }).catch(() => {});
+
+	// Store what the job produced, so the history list can show the real
+	// title, the real track count and the real track names instead of a
+	// bare URL and a status.
+	const durationSecs = Math.round(
+		audioTimestamps[audioTimestamps.length - 1]?.end ?? 0,
+	);
+	db.query(
+		`UPDATE jobs SET title = ?, track_count = ?, duration_secs = ?, tracks_json = ? WHERE id = ?`,
+	).run(
+		audioAlbum,
+		recognisedTracks.length,
+		durationSecs,
+		JSON.stringify(recognisedTracks),
+		jobId,
+	);
 
 	// Return the NAME, not the path.
 	return zipName;

@@ -273,7 +273,8 @@ const server = Bun.serve({
 			if (req.method === "GET" && pathname === "/api/history") {
 				const history = db
 					.query(
-						`SELECT id, video_url, status, error_msg, created_at FROM jobs WHERE client_id = ? ORDER BY created_at DESC, id DESC`,
+						`SELECT id, video_url, title, status, error_msg, track_count, duration_secs, created_at
+						 FROM jobs WHERE client_id = ? ORDER BY created_at DESC, id DESC`,
 					)
 					.all(clientId);
 
@@ -284,6 +285,40 @@ const server = Bun.serve({
 							job.status === "completed" ? `/api/download/${job.id}` : null,
 					})),
 				);
+			}
+
+			// --- GET /api/jobs/:id ---
+			// The named tracks of one job. The page shows the real split:
+			// which track, how long, and where it sits in the source.
+			if (req.method === "GET" && pathname.startsWith("/api/jobs/")) {
+				const id = pathname.slice("/api/jobs/".length);
+				if (!/^\d+$/.test(id)) {
+					return json({ error: "Not found" }, 404);
+				}
+
+				const job = db
+					.query(
+						`SELECT id, video_url, title, status, error_msg, track_count, duration_secs, tracks_json, created_at
+						 FROM jobs WHERE id = ?`,
+					)
+					.get(Number(id));
+
+				if (!job) return json({ error: "Not found" }, 404);
+				if (job.client_id !== clientId) {
+					return json({ error: "Forbidden" }, 403);
+				}
+
+				let tracks = [];
+				try {
+					const parsed = JSON.parse(job.tracks_json || "[]");
+					if (Array.isArray(parsed)) tracks = parsed;
+				} catch {
+					// A malformed row must not take the page down.
+					tracks = [];
+				}
+
+				const { tracks_json, ...rest } = job;
+				return json({ ...rest, tracks });
 			}
 
 			// --- GET /api/download/:id ---
