@@ -1,20 +1,51 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
 
-function useClientId() {
-	const [clientId] = useState(() => {
-		let id = localStorage.getItem("eztunes_client_id");
-		if (!id) {
-			id = crypto.randomUUID();
-			localStorage.setItem("eztunes_client_id", id);
-		}
-		return id;
+/**
+ * The API client.
+ *
+ * Every call carries the session cookie, which the server sets after a
+ * successful token exchange. The token itself is never stored here or in
+ * localStorage - the browser holds an HttpOnly cookie that JavaScript cannot
+ * read, so an XSS bug cannot exfiltrate the credential.
+ */
+async function api(path, options = {}) {
+	const res = await fetch(path, {
+		credentials: "same-origin",
+		...options,
+		headers: {
+			...(options.body ? { "Content-Type": "application/json" } : {}),
+			...options.headers,
+		},
 	});
-	return clientId;
+
+	if (res.status === 401) {
+		const err = new Error("Unauthorized");
+		err.unauthorized = true;
+		throw err;
+	}
+
+	const text = await res.text();
+	const data = text ? JSON.parse(text) : null;
+
+	if (!res.ok) {
+		throw new Error(data?.error || `Request failed (${res.status})`);
+	}
+	return data;
 }
 
 function App() {
-	const clientId = useClientId();
+	// --- auth state -----------------------------------------------------
+	// "checking" -> we are asking the server whether a session exists.
+	// "locked"    -> no session, show the unlock form. NOTHING is fetched
+	//               and NOTHING is rendered from job data in this state.
+	// "unlocked"  -> session is valid, the app is live.
+	const [authState, setAuthState] = useState("checking");
+	const [token, setToken] = useState("");
+	const [authError, setAuthError] = useState("");
+	const [clientId, setClientId] = useState("");
+
+	// --- job state ------------------------------------------------------
 	const [url, setUrl] = useState("");
 	const [expectedTracks, setExpectedTracks] = useState("");
 	const [jobId, setJobId] = useState(null);
@@ -22,72 +53,143 @@ function App() {
 	const [progressMsg, setProgressMsg] = useState("");
 	const [history, setHistory] = useState([]);
 
-	const fetchHistory = async () => {
-		if (!clientId) return;
-		const res = await fetch("/api/history", {
-			headers: { "x-client-id": clientId },
-		});
-		setHistory(await res.json());
-	};
-
-	// biome-ignore lint/correctness/useExhaustiveDependencies: later
+	// Keep the latest jobId in a ref so the socket handler always sees the
+	// current value without re-opening the connection on every change.
+	const jobIdRef = useRef(null);
 	useEffect(() => {
-		fetchHistory();
-	}, [clientId]);
+		jobIdRef.current = jobId;
+	}, [jobId]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: later
+	const fetchHistory = useCallback(async () => {
+		try {
+			const jobs = await api("/api/history");
+			setHistory(Array.isArray(jobs) ? jobs : []);
+		} catch (err) {
+			if (err.unauthorized) {
+				setAuthState("locked");
+				return;
+			}
+			setProgressMsg(`History error: ${err.message}`);
+		}
+	}, []);
+
+	// On mount, ask the server whether we already hold a valid session.
+	// The cookie is HttpOnly, so this is the only way to know.
 	useEffect(() => {
-		if (!clientId) return;
+		let cancelled = false;
+		(async () => {
+			try {
+				const res = await fetch("/api/history", {
+					credentials: "same-origin",
+				});
+				if (cancelled) return;
+				if (res.ok) {
+					setAuthState("unlocked");
+					const jobs = await res.json();
+					setHistory(Array.isArray(jobs) ? jobs : []);
+				} else {
+					setAuthState("locked");
+				}
+			} catch {
+				if (!cancelled) setAuthState("locked");
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	// The live socket. Only opened once authenticated.
+	useEffect(() => {
+		if (authState !== "unlocked") return undefined;
 
 		const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-		const ws = new WebSocket(
-			`${protocol}//${window.location.host}/api/ws?clientId=${clientId}`,
-		);
+		const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
 
 		ws.onmessage = (event) => {
-			const data = JSON.parse(event.data);
+			let data;
+			try {
+				data = JSON.parse(event.data);
+			} catch {
+				return;
+			}
 
-			if (jobId && data.jobId === jobId) {
+			const current = jobIdRef.current;
+			if (current && data.jobId === current) {
 				setStatus(data.status);
-				setProgressMsg(data.progressMsg);
+				setProgressMsg(data.progressMsg || "");
 			}
 
 			fetchHistory();
 		};
 
+		ws.onclose = () => {
+			// The server drops the session on restart; a closed socket means
+			// the app can no longer refresh. Ask the user to unlock again.
+			setAuthState((prev) => (prev === "unlocked" ? "locked" : prev));
+		};
+
 		return () => ws.close();
-	}, [clientId, jobId]);
+	}, [authState, fetchHistory]);
+
+	const handleUnlock = async (e) => {
+		e.preventDefault();
+		setAuthError("");
+		try {
+			const res = await fetch("/api/session", {
+				method: "POST",
+				credentials: "same-origin",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ token }),
+			});
+
+			if (!res.ok) {
+				setAuthError("That token was not accepted.");
+				return;
+			}
+
+			const data = await res.json();
+			setClientId(data.clientId || "");
+			// Do not keep the token in component state longer than needed.
+			setToken("");
+			setAuthState("unlocked");
+			await fetchHistory();
+		} catch {
+			setAuthError("Could not reach the server.");
+		}
+	};
 
 	const handleSubmit = async (e) => {
 		e.preventDefault();
-		if (!url || !clientId) return;
+		if (!url || authState !== "unlocked") return;
 
 		setStatus("pending");
 		setProgressMsg("Job added to queue...");
 
 		try {
-			const res = await fetch("/api/process", {
+			const data = await api("/api/process", {
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ videoUrl: url, clientId, expectedTracks }),
+				body: JSON.stringify({ videoUrl: url, expectedTracks }),
 			});
-			const data = await res.json();
-			if (!res.ok) throw new Error(data.error);
 			setJobId(data.jobId);
 		} catch (err) {
+			if (err.unauthorized) {
+				setAuthState("locked");
+				return;
+			}
 			setStatus("failed");
 			setProgressMsg(err.message);
 		}
 	};
 
 	const handleDownload = async (jobIdToDownload) => {
-		if (!jobIdToDownload || !clientId) return alert("Please refresh the page.");
+		if (!jobIdToDownload || authState !== "unlocked") return;
 
 		setProgressMsg("Downloading file...");
 
 		try {
 			const res = await fetch(`/api/download/${jobIdToDownload}`, {
-				headers: { "x-client-id": clientId },
+				credentials: "same-origin",
 			});
 
 			if (!res.ok) {
@@ -110,7 +212,6 @@ function App() {
 				setProgressMsg("All done!");
 			}, 1000);
 		} catch (err) {
-			console.error(err);
 			setStatus("failed");
 			setProgressMsg(`Download error: ${err.message}`);
 		}
@@ -190,6 +291,76 @@ function App() {
 		);
 	};
 
+	// ---------------------------------------------------------------
+	// The unlock screen. No job data is fetched or shown before this.
+	// ---------------------------------------------------------------
+	if (authState !== "unlocked") {
+		return (
+			<main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center px-4">
+				<div className="pointer-events-none fixed inset-0">
+					<div className="absolute inset-0 bg-[radial-gradient(1200px_600px_at_20%_10%,rgba(99,102,241,0.25),transparent_60%),radial-gradient(900px_500px_at_90%_20%,rgba(16,185,129,0.18),transparent_55%),radial-gradient(800px_500px_at_50%_100%,rgba(148,163,184,0.10),transparent_60%)]" />
+					<div className="absolute inset-0 bg-gradient-to-b from-slate-950/30 via-slate-950 to-slate-950" />
+				</div>
+
+				<div className="relative w-full max-w-md">
+					<div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl shadow-black/30 p-8">
+						<div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+							<span className="h-2 w-2 rounded-full bg-emerald-400" />
+							EzTunes Splitter
+						</div>
+
+						<h1 className="mt-4 text-2xl font-semibold tracking-tight">
+							{authState === "checking" ? "Checking session…" : "Unlock"}
+						</h1>
+
+						{authState === "checking" ? (
+							<p className="mt-2 text-sm text-slate-300">
+								Verifying your session with the server.
+							</p>
+						) : (
+							<form onSubmit={handleUnlock} className="mt-6 space-y-4">
+								<div>
+									<label
+										htmlFor="api-token"
+										className="block text-xs text-slate-300 mb-2"
+									>
+										Access token
+									</label>
+									<input
+										id="api-token"
+										type="password"
+										autoComplete="current-password"
+										placeholder="Paste your EZTUNES_API_TOKEN"
+										value={token}
+										onChange={(e) => setToken(e.target.value)}
+										required
+										className="w-full rounded-xl border border-white/10 bg-slate-900/60 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/40"
+									/>
+								</div>
+
+								{authError ? (
+									<p className="text-sm font-semibold text-red-300">{authError}</p>
+								) : null}
+
+								<button
+									type="submit"
+									className="w-full inline-flex items-center justify-center rounded-xl bg-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-400 active:bg-indigo-600 transition-colors"
+								>
+									Unlock
+								</button>
+
+								<p className="text-xs text-slate-500">
+									The token is exchanged for a session cookie. It is never
+									stored in this browser.
+								</p>
+							</form>
+						)}
+					</div>
+				</div>
+			</main>
+		);
+	}
+
 	return (
 		<main className="min-h-screen bg-slate-950 text-slate-100">
 			{/* Background */}
@@ -217,7 +388,7 @@ function App() {
 					<div className="hidden md:block text-right">
 						<p className="text-xs text-slate-400">Client</p>
 						<p className="text-xs font-mono text-slate-300 truncate max-w-52">
-							{clientId}
+							{clientId || "…"}
 						</p>
 					</div>
 				</header>
@@ -231,11 +402,14 @@ function App() {
 								className="grid grid-cols-1 md:grid-cols-12 gap-3"
 							>
 								<div className="md:col-span-8">
-									{/** biome-ignore lint/a11y/noLabelWithoutControl: later */}
-									<label className="block text-xs text-slate-300 mb-2">
+									<label
+										htmlFor="youtube-url"
+										className="block text-xs text-slate-300 mb-2"
+									>
 										YouTube URL
 									</label>
 									<input
+										id="youtube-url"
 										type="url"
 										placeholder="https://www.youtube.com/watch?v=..."
 										value={url}
@@ -246,11 +420,14 @@ function App() {
 								</div>
 
 								<div className="md:col-span-4">
-									{/** biome-ignore lint/a11y/noLabelWithoutControl: later */}
-									<label className="block text-xs text-slate-300 mb-2">
+									<label
+										htmlFor="expected-tracks"
+										className="block text-xs text-slate-300 mb-2"
+									>
 										Expected tracks (optional)
 									</label>
 									<input
+										id="expected-tracks"
 										type="number"
 										min="1"
 										placeholder="e.g. 12"
@@ -262,7 +439,7 @@ function App() {
 
 								<div className="md:col-span-12 flex items-center justify-between gap-3 pt-1">
 									<p className="text-xs text-slate-400">
-										We’ll keep your job history in this browser via a client id.
+										Your job history is tied to this session.
 									</p>
 
 									<button
@@ -311,7 +488,7 @@ function App() {
 							</div>
 
 							<p className="mt-2 text-xs text-slate-400">
-								Recent jobs for this client.
+								Recent jobs for this session.
 							</p>
 						</div>
 
