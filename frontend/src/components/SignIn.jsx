@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { motion } from "motion/react";
+import ThemeSwitch from "./ThemeSwitch.jsx";
 
 /**
  * The gate.
@@ -8,7 +9,7 @@ import { motion } from "motion/react";
  * and exchanged for a signed HttpOnly cookie; the browser never keeps the
  * token itself, and JavaScript cannot read the cookie that comes back.
  */
-export default function SignIn({ onSignIn }) {
+export default function SignIn({ onSignIn, theme, onToggleTheme }) {
 	const [token, setToken] = useState("");
 	const [error, setError] = useState("");
 	const [busy, setBusy] = useState(false);
@@ -41,6 +42,9 @@ export default function SignIn({ onSignIn }) {
 
 	return (
 		<main className="signin wrap">
+			<div className="signin-bar">
+				<ThemeSwitch theme={theme} onToggle={onToggleTheme} />
+			</div>
 			<div className="signin-inner stack">
 				<motion.div
 					className="stack"

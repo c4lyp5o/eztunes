@@ -93,6 +93,30 @@
 	color-scheme: light;
 }
 
+/*
+ * THE DARK MOOD.
+ *
+ * The bottle green becomes the ground, so the dark version reads as the
+ * same product rather than a different one, and the yellow accent works on
+ * both. The ink is a soft light rather than pure white, and depth comes
+ * from a lighter surface step, never a glow.
+ *
+ * Every text pair in both moods was checked with the WCAG formula:
+ *   light  ink on ground 14.4:1   muted on ground 7.9:1
+ *   dark   ink on ground 15.0:1   muted on ground 7.8:1
+ */
+:root[data-theme="dark"] {
+	--bg: #0b1d15;
+	--surface: #14281d;
+	--surface-deep: #1c3225;
+	--ink: #e9efe6;
+	--muted: #9db3a4;
+	--accent: #f6e016;
+	--accent-ink: #0d2a1c;
+
+	color-scheme: dark;
+}
+
 /* ------------------------------------------------------------------ */
 /* reset                                                              */
 /* ------------------------------------------------------------------ */
@@ -352,6 +376,56 @@ p + p {
 	font-size: var(--step-small);
 	color: var(--muted);
 	margin-bottom: 0.4rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* the theme switch                                                   */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A real switch, built at the size of the type beside it so the two read
+ * as one thing. Square corners, like everything else on the page.
+ */
+.switch {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.55rem;
+	font-size: var(--step-small);
+	color: var(--muted);
+	min-height: 2.25rem;
+	transition: color var(--t-hover) ease;
+}
+
+.switch:hover {
+	color: var(--ink);
+}
+
+.switch-track {
+	position: relative;
+	width: 2.4rem;
+	height: 1.35rem;
+	background: var(--surface-deep);
+	flex: 0 0 auto;
+	transition: background-color var(--t-ui) ease;
+}
+
+.switch-knob {
+	position: absolute;
+	top: 0.2rem;
+	left: 0.2rem;
+	width: 0.95rem;
+	height: 0.95rem;
+	background: var(--ink);
+	transition: transform var(--t-ui) var(--ease-out),
+		background-color var(--t-ui) ease;
+}
+
+.switch[aria-checked="true"] .switch-track {
+	background: var(--accent);
+}
+
+.switch[aria-checked="true"] .switch-knob {
+	transform: translateX(1.05rem);
 }
 
 /* ------------------------------------------------------------------ */

@@ -25,6 +25,8 @@ import SplitMap from "./components/SplitMap.jsx";
 import TrackList from "./components/TrackList.jsx";
 import PhaseReadout from "./components/PhaseReadout.jsx";
 import SignIn from "./components/SignIn.jsx";
+import ThemeSwitch from "./components/ThemeSwitch.jsx";
+import { useTheme } from "./lib/theme.js";
 import { formatDuration, formatWhen } from "./lib/format.js";
 import "./styles/base.css";
 import "./styles/app.css";
@@ -66,6 +68,11 @@ async function api(path, options = {}) {
 /* ------------------------------------------------------------------ */
 
 export default function App() {
+	// --- the theme ---
+	// Dark is the default. The choice is remembered, and the attribute is
+	// set on the document element before the first paint.
+	const { theme, toggle: toggleTheme } = useTheme();
+
 	// --- auth state ---
 	// "checking" -> we are asking the server whether a session exists.
 	// "locked"    -> no session. Nothing is fetched and nothing is rendered
@@ -273,7 +280,13 @@ export default function App() {
 				</main>
 			);
 		}
-		return <SignIn onSignIn={handleSignIn} />;
+		return (
+			<SignIn
+				onSignIn={handleSignIn}
+				theme={theme}
+				onToggleTheme={toggleTheme}
+			/>
+		);
 	}
 
 	const busy = status === "pending" || status === "processing";
@@ -284,6 +297,7 @@ export default function App() {
 				<span className="wordmark">ezTunes</span>
 				<div className="bar-links">
 					<span>Session {clientId.slice(0, 8)}</span>
+					<ThemeSwitch theme={theme} onToggle={toggleTheme} />
 					<button
 						type="button"
 						className="button-quiet"
