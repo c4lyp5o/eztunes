@@ -42,7 +42,7 @@ ENV TZ=Asia/Kuala_Lumpur
 # musl libc ("not found" despite being present and executable).
 ARG YTDLP_URL=https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_musllinux
 
-RUN apk add --no-cache ffmpeg curl \
+RUN apk add --no-cache ffmpeg curl su-exec \
  && mkdir -p /opt/yt-dlp \
  && curl -fsSL "$YTDLP_URL" -o /opt/yt-dlp/yt-dlp \
  && chmod 0755 /opt/yt-dlp/yt-dlp \
@@ -90,14 +90,19 @@ COPY --from=builder --chown=bun:bun --chmod=u=rwX,go=rX /app/frontend/dist ./fro
 # sharing one SQLite file; pm2 keeps both alive and restarts them on crash.
 COPY --chown=bun:bun --chmod=u=rwX,go=rX package.json ./
 COPY --chown=bun:bun --chmod=u=rwX,go=rX ecosystem.config.js ./
+COPY --chown=root:root --chmod=0755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # pm2 as the app user. The oven/bun image pins BUN_INSTALL_BIN to a
 # root-owned directory, so redirect the global bin dir to a user-writable
 # one that is already on PATH.
-USER bun
+#
+# The pm2 global install runs as root (it writes to a root-owned prefix),
+# but the app itself is started as the `bun` user by the entrypoint, which
+# drops privileges with su-exec.
 ENV HOME=/home/bun \
     PATH="/home/bun/.bun/bin:${PATH}"
-RUN BUN_INSTALL_BIN=/home/bun/.bun/bin bun add -g pm2
+RUN BUN_INSTALL_BIN=/home/bun/.bun/bin bun add -g pm2 \
+ && chown -R bun:bun /home/bun
 
 # Prove the tree is actually readable and traversable by the app user before
 # the image is allowed to exist. A directory copied without the execute bit
@@ -127,4 +132,7 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD bun -e "const r = await fetch('http://127.0.0.1:5000/api/health'); process.exit(r.ok ? 0 : 1)"
 
+# The entrypoint starts as root so it can fix the ownership of the data
+# volume, then drops to the unprivileged `bun` user for the app itself.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["bun", "start"]

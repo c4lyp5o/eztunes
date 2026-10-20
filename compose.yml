@@ -12,11 +12,12 @@ services:
     container_name: eztunes
     restart: unless-stopped
 
-    # Run as the app user so the data volume stays owned by a real uid.
-    # The image pins the eztunes user to uid/gid 1000, which is what a
-    # bind-mounted ./data directory is owned by on the host. Override only
-    # if your host user differs.
-    user: "${UID:-1000}:${GID:-1000}"
+    # NOTE: no `user:` override here on purpose. The image's entrypoint
+    # starts as root so it can fix the ownership of the data volume (Docker
+    # creates a missing bind-mount source as root, which would otherwise
+    # leave the app unable to open its own SQLite file), then drops to the
+    # unprivileged `bun` user for the app itself. Overriding the user here
+    # would defeat that and hand the app root.
 
     ports:
       # Overridable so a second instance (staging, a test) does not have to
