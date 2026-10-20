@@ -15,3 +15,6 @@ coverage
 .DS_Store
 .vscode
 .idea
+
+# The design skill's working output: measurements and screenshots.
+.taste-skill/
