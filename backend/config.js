@@ -47,22 +47,39 @@ function int(value, fallback) {
 }
 
 /**
- * Resolve ffmpeg.
+ * Resolve ffmpeg to an ABSOLUTE path.
  *
  * The Windows tree shipped a bundled ffmpeg.exe, which is useless inside a
  * Linux container. Order of preference: an explicit FFMPEG_PATH, then the
- * bundled Windows build if this process is actually on Windows, then whatever
- * is on PATH.
+ * bundled Windows build if this process is actually on Windows, then
+ * whatever is on PATH.
+ *
+ * The result is absolute because yt-dlp's `ffmpegLocation` option wants the
+ * DIRECTORY holding ffmpeg, and path.dirname("ffmpeg") is "." - which
+ * would point yt-dlp at the wrong place entirely.
  */
 function resolveFfmpeg(env) {
 	const explicit = required("FFMPEG_PATH", env);
-	if (explicit) return explicit;
+	if (explicit) return path.resolve(explicit);
 
 	if (process.platform === "win32") {
 		const bundled = path.join(APP_DIR, "bin", "ffmpeg.exe");
 		if (Bun.file(bundled).size > 0) return bundled;
 	}
 
+	// Look for ffmpeg on PATH.
+	const pathEnv = env.PATH || env.Path || "";
+	for (const dir of pathEnv.split(path.delimiter)) {
+		if (!dir) continue;
+		const candidate = path.join(dir, "ffmpeg");
+		try {
+			if (Bun.file(candidate).size > 0) return candidate;
+		} catch {
+			/* not a regular file, keep looking */
+		}
+	}
+
+	// Fall back to the bare name; spawn() will resolve it via PATH.
 	return "ffmpeg";
 }
 
