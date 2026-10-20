@@ -1,0 +1,19 @@
+# Normalise line endings so the repo is byte-identical on Windows and Linux.
+# The canonical tree lives on a Windows box with core.autocrlf=true, which
+# rewrites LF to CRLF on checkout. Without this file the SAME commit produces
+# a different working tree on each platform, and every diff is polluted with
+# end-of-line noise. A container build must not depend on the checkout style.
+* text=auto eol=lf
+
+# Binary assets - never touch
+*.sqlite binary
+*.sqlite-wal binary
+*.sqlite-shm binary
+*.exe binary
+*.zip binary
+*.mp3 binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary

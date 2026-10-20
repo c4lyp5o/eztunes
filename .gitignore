@@ -1,0 +1,17 @@
+node_modules
+dist
+dist-ssr
+blackhole
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.env
+.env.*
+!.env.example
+backend/bin/
+logs
+coverage
+*.lcov
+.DS_Store
+.vscode
+.idea

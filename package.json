@@ -1,0 +1,23 @@
+{
+	"name": "eztunes",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"install:backend": "cd backend && bun install",
+		"install:frontend": "cd frontend && bun install",
+		"install": "bun install:backend && bun install:frontend",
+		"dev:backend": "cd backend && bun --watch server.js",
+		"dev:worker": "cd backend && bun --watch worker.js",
+		"dev:frontend": "cd frontend && bun dev",
+		"dev": "conc -n \"BACKEND,WORKER,FRONTEND\" -c \"cyan,yellow,magenta\" \"npm run dev:backend\" \"npm run dev:worker\" \"npm run dev:frontend\"",
+		"test:backend": "cd backend && bun test",
+		"build:client": "cd frontend && bun run build",
+		"start": "pm2-runtime start ecosystem.config.js --env production",
+		"stop": "pm2 stop all",
+		"restart": "pm2 restart all",
+		"logs": "pm2 monit"
+	},
+	"devDependencies": {
+		"concurrently": "^9.2.1"
+	}
+}
