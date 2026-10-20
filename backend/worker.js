@@ -1,37 +1,40 @@
-import { spawn, exec } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { promisify } from "node:util";
 import archiver from "archiver";
 import youtubedl from "youtube-dl-exec";
 
 import logger from "./logger.js";
-import db from "./db.js";
+import { openDatabase } from "./db.js";
+import { loadConfig } from "./config.js";
+import { sanitizeFileName } from "./paths.js";
+import { sweepJobs } from "./sweep.js";
 
-const execPromise = promisify(exec);
+/**
+ * The eztunes worker.
+ *
+ * Claims jobs from the SQLite queue, splits the audio, tags the tracks and
+ * zips the result. Progress is pushed to the server over the internal
+ * broadcast endpoint.
+ *
+ * Security-relevant behaviour:
+ *  - ffmpeg is invoked with spawn() and an ARGV ARRAY. No shell, so no
+ *    metadata from AudD or YouTube can ever be interpreted as a command. The
+ *    previous code built a shell string; it was not exploitable as written
+ *    (the sanitiser stripped quotes and cmd.exe does not re-parse
+ *    metacharacters inside double quotes) but it was one careless edit away
+ *    from remote code execution.
+ *  - The AudD token comes from the environment only. It is never a literal in
+ *    this file, so it cannot leak into the image layers or a git history.
+ *  - The broadcast hop authenticates with its own internal token.
+ */
 
-const BASE_OUTPUT_DIR = process.env.OUTPUT_DIR
-	? path.resolve(process.env.OUTPUT_DIR)
-	: path.join(process.cwd(), "blackhole");
+const config = loadConfig();
+const db = openDatabase(config.dbPath);
 
-const FFMPEG_PATH = process.env.FFMPEG_PATH || "ffmpeg";
-
-const AUDD_API_TOKEN =
-	process.env.AUDD_API_TOKEN;
-
-const BROADCAST_URL =
-	process.env.BROADCAST_URL || "http://localhost:5000/api/internal/broadcast";
-
-// Worker tuning
-const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS || 3000);
-const SWEEP_INTERVAL_MS = Number(
-	process.env.SWEEP_INTERVAL_MS || 12 * 60 * 60 * 1000,
-);
-
-const ffmpegPath = path.join(process.cwd(), "bin", "ffmpeg.exe");
-const baseOutputDir = path.join(process.cwd(), "blackhole");
+const OUTPUT_DIR = config.outputDir;
 
 // Prevent overlapping sweeps
 let sweepInFlight = false;
@@ -47,28 +50,70 @@ process.on("SIGTERM", () => {
 	logger.warn("SIGTERM received. Shutting down after current job");
 });
 
+/**
+ * Run a program with an argv array. No shell is involved, so arguments are
+ * passed through verbatim - a value that contains shell metacharacters is
+ * data, never syntax.
+ */
+function run(bin, args, { timeoutMs = 10 * 60 * 1000 } = {}) {
+	return new Promise((resolve, reject) => {
+		const child = spawn(bin, args, { shell: false, windowsHide: true });
+		let stdout = "";
+		let stderr = "";
+
+		const timer = setTimeout(() => {
+			child.kill("SIGKILL");
+			reject(new Error(`${bin} timed out after ${timeoutMs}ms`));
+		}, timeoutMs);
+
+		child.stdout.on("data", (d) => (stdout += d.toString()));
+		child.stderr.on("data", (d) => (stderr += d.toString()));
+
+		child.on("error", (err) => {
+			clearTimeout(timer);
+			reject(err);
+		});
+
+		child.on("close", (code) => {
+			clearTimeout(timer);
+			if (code === 0) resolve({ stdout, stderr });
+			else
+				reject(
+					new Error(
+						`${bin} exited with code ${code}: ${stderr.slice(-500) || stdout.slice(-500)}`,
+					),
+				);
+		});
+	});
+}
+
 async function broadcastStatus(
 	clientId,
 	jobId,
 	status,
 	progressMsg,
-	downloadUrl = null,
+	resultFileName = null,
 ) {
 	try {
 		logger.info(`[Job ${jobId}] ${progressMsg}`);
-		if (status === "completed" && downloadUrl) {
+		if (status === "completed" && resultFileName) {
+			// Store the NAME only. The server resolves it against the output
+			// root and refuses anything that escapes.
 			db.query(`UPDATE jobs SET status = ?, result_file = ? WHERE id = ?`).run(
 				status,
-				downloadUrl,
+				resultFileName,
 				jobId,
 			);
 		} else {
 			db.query(`UPDATE jobs SET status = ? WHERE id = ?`).run(status, jobId);
 		}
 
-		await fetch(BROADCAST_URL, {
+		await fetch(config.broadcastUrl, {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: {
+				"Content-Type": "application/json",
+				"x-internal-token": config.internalToken,
+			},
 			body: JSON.stringify({
 				clientId,
 				payload: {
@@ -80,7 +125,7 @@ async function broadcastStatus(
 			}),
 		});
 	} catch (e) {
-		logger.error("Failed to broadcast status: ", e.message || e);
+		logger.error(`Failed to broadcast status: ${e?.message || e}`);
 	}
 }
 
@@ -147,6 +192,16 @@ async function profileAndDetectSilences(
 			if (exactMatchFound) break;
 		}
 
+		// GUARD: bestProfile is only assigned inside the `silences.length > 0`
+		// branch. If every dB level and every gap width found no silence at
+		// all, it stays null and the old code threw a TypeError on
+		// `bestProfile.db`. Fail the job with a clear message instead.
+		if (!bestProfile) {
+			throw new Error(
+				"Could not detect any silences at any volume level. The audio may have no gaps between tracks, or it may not be audio at all.",
+			);
+		}
+
 		if (!exactMatchFound) {
 			logger.warn(
 				`[Job ${jobId}] ⚠️ Could not find exactly ${expectedTracks} tracks.`,
@@ -182,16 +237,14 @@ async function profileAndDetectSilences(
 		clientId,
 		jobId,
 		"processing",
-		`Analyzing silence distribution patterns...`,
+		"Analyzing silence distribution patterns...",
 	);
 
 	const silences = await runFFmpegSilence(filePath, -40, 0.8);
-	console.log("silences", silences);
 
 	if (silences.length === 0) {
 		// Fallback: If -40dB found nothing, the audio is very loud. Try -30dB.
 		const fallbackSilences = await runFFmpegSilence(filePath, -30, 0.8);
-		console.log("fallbackSilences", fallbackSilences);
 		if (fallbackSilences.length === 0)
 			throw new Error("Could not detect any silences.");
 		silences.push(...fallbackSilences);
@@ -276,31 +329,22 @@ function buildSongsArray(silences) {
 }
 
 function runFFmpegSilence(filePath, noiseDb, minDuration) {
-	return new Promise((resolve, reject) => {
-		const args = [
-			"-i",
-			filePath,
-			"-af",
-			`silencedetect=noise=${noiseDb}dB:d=${minDuration}`,
-			"-f",
-			"null",
-			"-",
-		];
-		const ffmpeg = spawn(ffmpegPath, args);
-		let output = "";
+	const args = [
+		"-i",
+		filePath,
+		"-af",
+		`silencedetect=noise=${noiseDb}dB:d=${minDuration}`,
+		"-f",
+		"null",
+		"-",
+	];
 
-		ffmpeg.stderr.on("data", (data) => (output += data.toString()));
-
-		ffmpeg.on("close", (code) => {
-			if (code !== 0)
-				return reject(
-					new Error(`FFmpeg silence detection failed at ${noiseDb}dB`),
-				);
-
+	return run(config.ffmpegPath, args)
+		.then(({ stderr }) => {
 			const silenceStarts = [
-				...output.matchAll(/silence_start: ([\d.]+)/g),
+				...stderr.matchAll(/silence_start: ([\d.]+)/g),
 			].map((m) => parseFloat(m[1]));
-			const silenceEnds = [...output.matchAll(/silence_end: ([\d.]+)/g)].map(
+			const silenceEnds = [...stderr.matchAll(/silence_end: ([\d.]+)/g)].map(
 				(m) => parseFloat(m[1]),
 			);
 
@@ -317,11 +361,13 @@ function runFFmpegSilence(filePath, noiseDb, minDuration) {
 					duration: silenceEnds[i] - silenceStarts[i],
 				});
 			}
-			resolve(silences);
+			return silences;
+		})
+		.catch((err) => {
+			throw new Error(
+				`FFmpeg silence detection failed at ${noiseDb}dB: ${err.message}`,
+			);
 		});
-
-		ffmpeg.on("error", (err) => reject(err));
-	});
 }
 
 async function sliceAndTagAudio(
@@ -348,8 +394,20 @@ async function sliceAndTagAudio(
 
 		const snippetPath = path.join(outputDir, `temp_snippet_${trackNumber}.mp3`);
 		const snippetStart = track.start + 5;
-		const snippetCmd = `"${ffmpegPath}" -i "${filePath}" -ss ${snippetStart} -t 15 -c copy "${snippetPath}" -y`;
-		await execPromise(snippetCmd);
+
+		// ARGV ARRAY - no shell. Every value is passed through verbatim.
+		await run(config.ffmpegPath, [
+			"-i",
+			filePath,
+			"-ss",
+			String(snippetStart),
+			"-t",
+			"15",
+			"-c",
+			"copy",
+			snippetPath,
+			"-y",
+		]);
 
 		const songData = await recognizeSong(snippetPath);
 
@@ -359,8 +417,8 @@ async function sliceAndTagAudio(
 
 		if (songData) {
 			songTitle = songData.title || songTitle;
-			safeArtist = (songData.artist || safeArtist).replace(/"/g, "'");
-			safeAlbum = (songData.album || safeAlbum).replace(/"/g, "'");
+			safeArtist = songData.artist || safeArtist;
+			safeAlbum = songData.album || safeAlbum;
 			await broadcastStatus(
 				clientId,
 				jobId,
@@ -376,28 +434,45 @@ async function sliceAndTagAudio(
 			);
 		}
 
-		const safeTitle = songTitle.replace(/"/g, "'");
-		const safeFileName = songTitle.replace(/[/\\?%*:|"<>]/g, "-");
+		// The filename is sanitised for the FILESYSTEM. The metadata values
+		// below are passed as separate argv entries, so they need no shell
+		// escaping at all.
+		const safeFileName = sanitizeFileName(songTitle, `Unknown Track ${trackNumber}`);
 		const trackOutputPath = path.join(
 			outputDir,
 			`${trackNumber} - ${safeFileName}.mp3`,
 		);
 
-		let cmd = `"${ffmpegPath}" -i "${filePath}" -ss ${track.start}`;
-		if (track.end !== null) cmd += ` -to ${track.end}`;
-		cmd += ` -c copy -id3v2_version 3 -metadata title="${safeTitle}" -metadata artist="${safeArtist}" -metadata album="${safeAlbum}" -metadata track="${i + 1}/${totalTracks}" "${trackOutputPath}" -y`;
+		const args = ["-i", filePath, "-ss", String(track.start)];
+		if (track.end !== null) args.push("-to", String(track.end));
+		args.push(
+			"-c",
+			"copy",
+			"-id3v2_version",
+			"3",
+			"-metadata",
+			`title=${songTitle}`,
+			"-metadata",
+			`artist=${safeArtist}`,
+			"-metadata",
+			`album=${safeAlbum}`,
+			"-metadata",
+			`track=${i + 1}/${totalTracks}`,
+			trackOutputPath,
+			"-y",
+		);
 
 		try {
-			await execPromise(cmd);
+			await run(config.ffmpegPath, args);
 		} catch (err) {
-			logger.error(`Failed to cut Track ${trackNumber}: `, err);
+			logger.error(`Failed to cut Track ${trackNumber}: ${err.message}`);
 		}
 	}
 }
 
 async function recognizeSong(filePath) {
 	const formData = new FormData();
-	formData.append("api_token", AUDD_API_TOKEN);
+	formData.append("api_token", config.auddToken);
 	formData.append("file", Bun.file(filePath));
 
 	try {
@@ -407,9 +482,14 @@ async function recognizeSong(filePath) {
 		});
 		const data = await response.json();
 		if (data.status === "success" && data.result) return data.result;
+		if (data.status === "error") {
+			logger.error(
+				`AudD rejected the request: ${data.error?.error_message || "unknown error"}`,
+			);
+		}
 		return null;
 	} catch (err) {
-		logger.error("Error in recognizeSong:", err);
+		logger.error(`Error in recognizeSong: ${err.message}`);
 		return null;
 	} finally {
 		await rm(filePath, { force: true }).catch(() => {});
@@ -417,7 +497,7 @@ async function recognizeSong(filePath) {
 }
 
 async function processAudioPipeline(videoUrl, jobId, clientId, expectedTracks) {
-	const audioOutputDir = path.join(BASE_OUTPUT_DIR, `job_${jobId}`);
+	const audioOutputDir = path.join(OUTPUT_DIR, `job_${jobId}`);
 	await mkdir(audioOutputDir, { recursive: true });
 	const audioPath = path.join(audioOutputDir, "source.mp3");
 
@@ -432,11 +512,15 @@ async function processAudioPipeline(videoUrl, jobId, clientId, expectedTracks) {
 		noWarnings: true,
 	});
 
+	// yt-dlp needs ffmpeg to mux the extracted audio. Point it at the same
+	// ffmpeg the worker uses; in a container that is the one on PATH.
+	const ffmpegLocation = path.dirname(config.ffmpegPath);
+
 	await youtubedl(videoUrl, {
 		extractAudio: true,
 		audioFormat: "mp3",
 		output: audioPath,
-		ffmpegLocation: path.join(process.cwd(), "bin"),
+		ffmpegLocation,
 	});
 
 	const audioArtist = info?.uploader || "Unknown Artist";
@@ -485,7 +569,8 @@ async function processAudioPipeline(videoUrl, jobId, clientId, expectedTracks) {
 	await broadcastStatus(clientId, jobId, "processing", "Zipping everything up");
 
 	await rm(audioPath).catch(() => {});
-	const zipPath = path.join(BASE_OUTPUT_DIR, `job_${jobId}_playlist.zip`);
+	const zipName = `job_${jobId}_playlist.zip`;
+	const zipPath = path.join(OUTPUT_DIR, zipName);
 	await new Promise((resolve, reject) => {
 		const output = fs.createWriteStream(zipPath);
 		const archive = archiver("zip", { zlib: { level: 9 } });
@@ -499,66 +584,30 @@ async function processAudioPipeline(videoUrl, jobId, clientId, expectedTracks) {
 	});
 	await rm(audioOutputDir, { recursive: true, force: true }).catch(() => {});
 
-	return zipPath;
+	// Return the NAME, not the path.
+	return zipName;
 }
 
+/**
+ * Remove the artefacts of jobs that can never complete, and prune old
+ * results.
+ *
+ * The logic lives in sweep.js so it can be tested against a real database
+ * without booting the worker. See that module for why the old
+ * "delete everything that is not completed" rule was dangerous.
+ */
 async function sweeper() {
 	if (sweepInFlight) return;
 	sweepInFlight = true;
 
 	try {
-		logger.info("🧹 Sweeper: Checking for non-success jobs from previous runs");
-
-		const stuckJobs = db
-			.query(`SELECT id, result_file FROM jobs WHERE status != 'completed'`)
-			.all();
-
-		if (stuckJobs.length === 0) {
-			logger.info("✨ Sweeper: No stuck jobs found.");
-			return;
-		}
-
-		for (const job of stuckJobs) {
-			const jobDir = path.join(BASE_OUTPUT_DIR, `job_${job.id}`);
-			await rm(jobDir, { recursive: true, force: true }).catch(() => {});
-
-			const zipPath = path.join(BASE_OUTPUT_DIR, `job_${job.id}_playlist.zip`);
-			await rm(zipPath, { force: true }).catch(() => {});
-
-			if (job.result_file) {
-				await rm(job.result_file, { force: true }).catch(() => {});
-			}
-		}
-
-		db.query(`DELETE FROM jobs WHERE status != 'completed'`).run();
-		logger.success(
-			`🧹 Sweeper: Removed ${stuckJobs.length} stuck job(s) and cleaned disk.`,
-		);
-
-		logger.info("🕰️ Sweeper: Checking for files older than 7 days");
-
-		const oldJobs = db
-			.query(`
-        SELECT id, result_file 
-        FROM jobs 
-        WHERE created_at <= datetime('now', '-7 days')
-    `)
-			.all();
-
-		if (oldJobs.length === 0) return;
-
-		for (const job of oldJobs) {
-			if (job.result_file) {
-				await rm(job.result_file, { force: true }).catch(() => {});
-			}
-		}
-
-		db.query(
-			`DELETE FROM jobs WHERE created_at <= datetime('now', '-7 days')`,
-		).run();
-		logger.success(
-			`🕰️ Sweeper: Deleted ${oldJobs.length} old job(s) and freed up disk space.`,
-		);
+		logger.info("🧹 Sweeper: checking for dead jobs and expired results");
+		await sweepJobs(db, {
+			outputDir: OUTPUT_DIR,
+			stuckJobMs: config.stuckJobMs,
+			retentionMs: config.retentionMs,
+			logger,
+		});
 	} catch (e) {
 		logger.error(`Sweeper error: ${e?.message || e}`);
 	} finally {
@@ -570,7 +619,7 @@ function claimNextJob() {
 	const job = db
 		.query(`
       UPDATE jobs
-      SET status = 'processing'
+      SET status = 'processing', updated_at = datetime('now')
       WHERE id = (
         SELECT id FROM jobs
         WHERE status = 'pending'
@@ -581,20 +630,15 @@ function claimNextJob() {
     `)
 		.get();
 
-	if (job)
-		db.query(`UPDATE jobs SET updated_at = datetime('now') WHERE id = ?`).run(
-			job.id,
-		);
-
 	return job;
 }
 
 async function startWorker() {
-	await mkdir(BASE_OUTPUT_DIR, { recursive: true });
+	await mkdir(OUTPUT_DIR, { recursive: true });
 
 	setInterval(() => {
 		sweeper().catch((e) => logger.error(`Sweeper error: ${e?.message || e}`));
-	}, SWEEP_INTERVAL_MS);
+	}, config.sweepIntervalMs);
 
 	await sweeper();
 
@@ -612,11 +656,11 @@ async function startWorker() {
 		}
 
 		if (!job) {
-			await delay(POLL_INTERVAL_MS);
+			await delay(config.pollIntervalMs);
 			continue;
 		}
 
-		logger.info(`Picked up Job #${job.id}: ${job.video_url}`);
+		logger.info(`Picked up Job #${job.id}`);
 
 		try {
 			await broadcastStatus(
@@ -626,7 +670,7 @@ async function startWorker() {
 				"Starting up pipeline",
 			);
 
-			const zipPath = await processAudioPipeline(
+			const zipName = await processAudioPipeline(
 				job.video_url,
 				job.id,
 				job.client_id,
@@ -638,7 +682,7 @@ async function startWorker() {
 				job.id,
 				"completed",
 				"All done!",
-				zipPath,
+				zipName,
 			);
 
 			logger.success(`Job #${job.id} completed!`);
