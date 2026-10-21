@@ -52,10 +52,19 @@ jobs:
         # stronger check anyway, because it catches any new credential and
         # not only the two that are already known.
         run: |
-          PATTERN="(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY)[A-Z_]*[[:space:]]*=[[:space:]]*[\"']?[A-Za-z0-9_/+-]{20,}"
+          # Two shapes, because credentials hide in two shapes.
+          #
+          #   1. an assignment:  API_TOKEN = "a-long-opaque-value"
+          #   2. a fallback:    process.env.API_TOKEN || "a-long-opaque-value"
+          #
+          # The fallback form is the one that actually leaked in the
+          # original history, so a scan that only covers assignments
+          # would have missed the very thing it was written to catch.
+          ASSIGN="(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY)[A-Z_]*[[:space:]]*=[[:space:]]*[\"']?[A-Za-z0-9_/+-]{20,}"
+          FALLBACK="(TOKEN|SECRET|PASSWORD|PASSWD|API_KEY)[A-Z_]*[[:space:]]*\|\|[[:space:]]*[\"']?[A-Za-z0-9_/+-]{20,}"
           # The two test files hold deliberate long opaque fixtures. They
           # are named for what they are and carry no real credential.
-          HITS=$(git grep -nIE "$PATTERN" -- . \
+          HITS=$(git grep -nIE "$ASSIGN|$FALLBACK" -- . \
             | grep -vE '^backend/tests/(auth|server)\.test\.js:[0-9]+:' \
             || true)
           if [ -n "$HITS" ]; then
