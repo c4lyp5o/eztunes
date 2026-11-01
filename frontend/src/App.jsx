@@ -74,7 +74,7 @@ export default function App() {
 	//               from job data in this state.
 	// "unlocked"  -> session is valid, the app is live.
 	const [authState, setAuthState] = useState("checking");
-	const [clientId, setClientId] = useState("");
+	const [, setClientId] = useState("");
 
 	// --- job state ---
 	const [url, setUrl] = useState("");
@@ -283,7 +283,7 @@ export default function App() {
 
 	return (
 		<Shell
-			brand={<Brand name="eztunes" glyph="tn" scope={`Session ${clientId.slice(0, 8)}`} />}
+			brand={<Brand name="eztunes" glyph="tn" scope="Splits videos into tracks" />}
 			topbarActions={
 				<button
 					type="button"
@@ -293,7 +293,7 @@ export default function App() {
 						setAuthState("locked");
 					}}
 				>
-					Lock
+					Sign out
 				</button>
 			}
 			title="Split"
