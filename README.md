@@ -187,4 +187,4 @@ otherwise).
 
 ## Licence
 
-Private. All rights reserved.
+[MIT](LICENSE).

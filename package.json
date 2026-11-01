@@ -2,6 +2,7 @@
 	"name": "eztunes",
 	"type": "module",
 	"version": "1.0.0",
+	"license": "MIT",
 	"private": true,
 	"scripts": {
 		"install:backend": "cd backend && bun install",
