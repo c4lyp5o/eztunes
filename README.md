@@ -38,10 +38,7 @@ docker pull ghcr.io/c4lyp5o/eztunes:latest    # or a pinned tag, e.g. :v1.0.0
 docker compose up -d                           # compose.yml already names this image
 ```
 
-The image is `linux/amd64` only. The repository is private, so the
-package is too: log in first with
-`echo $GITHUB_TOKEN | docker login ghcr.io -u <user> --password-stdin`
-using a token that has `read:packages`.
+The image is `linux/amd64` only, and public: no `docker login` needed.
 
 ### The four required secrets
 
