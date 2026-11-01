@@ -1,18 +1,19 @@
-# React + Vite
+# eztunes frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + Vite, styled with Tailwind v4 and the shared ez design kit
+(`src/ez/`): the ezllm/ezdyndns house style, Motion for transitions and a
+three.js backdrop. Dark is the default theme; the choice is stored under
+`ez.theme`.
 
-Currently, two official plugins are available:
+```bash
+bun install
+bun dev            # :3000, proxies /api and the WebSocket to :5000
+bun run build      # dist/, served by the backend in production
+bun run lint
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+`preview.html` renders every screen state with fake data, without a
+backend: open `http://localhost:3000/preview.html` while `bun dev` runs.
 
-## React Compiler
-
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
-
-Note: This will impact Vite dev & build performances.
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+The footer shows `version` from this folder's `package.json`, injected at
+build time as `__APP_VERSION__` (see `vite.config.js`).

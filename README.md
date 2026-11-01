@@ -1,7 +1,12 @@
 # eztunes
 
+[![Test](https://github.com/c4lyp5o/eztunes/actions/workflows/test.yml/badge.svg)](https://github.com/c4lyp5o/eztunes/actions/workflows/test.yml)
+[![Build & Push Docker Image](https://github.com/c4lyp5o/eztunes/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/c4lyp5o/eztunes/actions/workflows/docker-publish.yml)
+
 Split a YouTube upload into individual tagged MP3 tracks, and download them
 as a ZIP.
+
+Version **1.0.0**. The running version is shown in the app's footer.
 
 **How it works:** a worker downloads the audio with yt-dlp, finds the gaps
 between tracks with ffmpeg's `silencedetect`, cuts the audio at those
@@ -14,13 +19,29 @@ progress live over a WebSocket.
 ## Quick start (Docker)
 
 ```bash
-git clone <this repo> && cd eztunes
-cp .env.example .env      # fill in the four secrets - see below
+git clone git@github.com:c4lyp5o/eztunes.git && cd eztunes
+cp backend/.env.example .env   # fill in the four secrets - see below
 docker compose up -d --build
 ```
 
 The app is on `http://localhost:5000`. Open it, paste your
-`EZTUNES_API_TOKEN` into the unlock screen, and you are in.
+`EZTUNES_API_TOKEN` into the sign-in screen, and you are in. **Sign out**
+in the top bar clears the session cookie.
+
+### Using the published image
+
+Every push to `master` (and every `v*` tag) is tested and then published
+to GHCR, so you can skip the local build:
+
+```bash
+docker pull ghcr.io/c4lyp5o/eztunes:latest    # or a pinned tag, e.g. :v1.0.0
+docker compose up -d                           # compose.yml already names this image
+```
+
+The image is `linux/amd64` only. The repository is private, so the
+package is too: log in first with
+`echo $GITHUB_TOKEN | docker login ghcr.io -u <user> --password-stdin`
+using a token that has `read:packages`.
 
 ### The four required secrets
 
@@ -79,9 +100,15 @@ backend/
   server.js    HTTP + WebSocket + serves the built frontend
   worker.js    claims jobs, splits audio, tags tracks, zips
   sweep.js     housekeeping for dead and expired jobs
-  tests/       85 tests
+  tests/       111 tests across 8 files
 frontend/
-  src/App.jsx  the unlock screen and the splitter UI
+  src/App.jsx           the splitter screen: form, progress, history
+  src/components/       SignIn, PhaseReadout, SplitMap, TrackList
+  src/ez/               the shared ez design kit (shell, motion, 3D backdrop)
+  preview.html          a design harness that renders every state with fake data
+.github/workflows/
+  test.yml              tests, build, lint, secret scan, image build
+  docker-publish.yml    runs test.yml, then pushes the image to GHCR
 ```
 
 The server and the worker are **separate processes** sharing one SQLite
@@ -129,7 +156,7 @@ the full set; the ones you are most likely to touch:
 ## Tests
 
 ```bash
-bun test              # 85 tests
+cd backend && bun test        # 111 tests; silence.test.js needs ffmpeg on PATH
 cd frontend && bun run lint
 ```
 
@@ -139,6 +166,25 @@ longer authenticates anything, path traversal cannot escape the output
 directory, the sweeper does not delete a job that is still running, and
 timestamps are compared correctly regardless of the format they were
 written in.
+
+### Continuous integration
+
+`test.yml` runs on every push to `master`, on pull requests, and on
+demand. It installs ffmpeg, runs the backend suite, builds and lints the
+frontend, scans the tree for credential-shaped literals, and builds the
+Docker image. `docker-publish.yml` calls it as a gate and only pushes to
+`ghcr.io/c4lyp5o/eztunes` when it passes. Images are tagged `latest` plus
+the output of `git describe` (the tag name on a release, the short SHA
+otherwise).
+
+---
+
+## Releasing
+
+1. Bump `version` in `package.json`, `frontend/package.json` and
+   `backend/package.json` (the footer reads `frontend/package.json`).
+2. Commit, then tag: `git tag v1.2.3 && git push origin master v1.2.3`.
+3. The tag build publishes `ghcr.io/c4lyp5o/eztunes:v1.2.3`.
 
 ---
 

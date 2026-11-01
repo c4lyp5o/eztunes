@@ -1,6 +1,6 @@
 # Run eztunes in Docker.
 #
-#   cp .env.example .env      (fill in the four required secrets)
+#   cp backend/.env.example .env      (fill in the four required secrets)
 #   docker compose up -d --build
 #
 # Both paths work: `build: .` compiles from source, or drop it and use
