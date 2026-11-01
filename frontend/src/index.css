@@ -1,0 +1,10 @@
+@import "tailwindcss";
+@import "./ez/ez.css";
+@source not "../dist";
+
+/* eztunes keeps its yellow, as the one accent: the cuts on the split map
+   (the silences the tool found) and the selection line. */
+:root {
+	--ez-accent-light: #a16207;
+	--ez-accent-dark: #f6e016;
+}

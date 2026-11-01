@@ -1,4 +1,6 @@
-import { motion, AnimatePresence, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { useReducedMotion } from "../ez/motion";
+import { EmptyState } from "../ez/ui";
 
 /**
  * The map of the split.
@@ -38,17 +40,17 @@ export default function SplitMap({ tracks, duration }) {
 
 	if (!tracks || tracks.length === 0) {
 		return (
-			<p className="empty">
-				The map fills in as the split is found. Every gap between two
-				tracks is a silence the tool detected.
-			</p>
+			<EmptyState
+				title="The map fills in as the split is found."
+				hint="Every gap between two tracks is a silence the tool detected."
+			/>
 		);
 	}
 
 	const total = duration || tracks[tracks.length - 1].end || 0;
 
 	return (
-		<div className="splitmap" aria-hidden="true">
+		<div className="flex h-14 w-full items-stretch overflow-hidden rounded-lg border border-line bg-inset" aria-hidden="true">
 			{tracks.map((track, i) => {
 				const start = track.start ?? 0;
 				const end = track.end ?? start;
@@ -59,11 +61,9 @@ export default function SplitMap({ tracks, duration }) {
 				return (
 					<AnimatePresence key={track.index ?? i} initial={false}>
 						<motion.div
-							className={
-								track.title
-									? "splitmap-track"
-									: "splitmap-track splitmap-track-unknown"
-							}
+							className={`relative flex min-w-0 origin-left items-end px-2 pb-1.5 ${
+								track.title ? "bg-raised" : "bg-shade"
+							}`}
 							style={{ flexGrow: Math.max(0.02, end - start) }}
 							initial={reduce ? false : { scaleX: 0, opacity: 0 }}
 							animate={{ scaleX: 1, opacity: 1 }}
@@ -75,7 +75,7 @@ export default function SplitMap({ tracks, duration }) {
 							}}
 						>
 							{share >= MIN_LABEL_FRACTION ? (
-								<span className="splitmap-label">
+								<span className="truncate text-[11px] font-medium text-dim">
 									{track.title ?? `${track.index ?? i + 1}`}
 								</span>
 							) : null}
@@ -83,7 +83,7 @@ export default function SplitMap({ tracks, duration }) {
 						{gap > 0.05 ? (
 							<motion.div
 								key={`gap-${track.index ?? i}`}
-								className="splitmap-gap"
+								className="origin-center bg-accent"
 								style={{
 									flex: `0 0 ${Math.min(
 										MAX_GAP_PX,
@@ -98,7 +98,6 @@ export default function SplitMap({ tracks, duration }) {
 					</AnimatePresence>
 				);
 			})}
-			{total > 0 ? null : null}
 		</div>
 	);
 }

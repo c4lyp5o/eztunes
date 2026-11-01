@@ -14,6 +14,8 @@
 
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
+import "./index.css";
+import { MotionRoot } from "./ez/motion";
 
 /* ------------------------------------------------------------------ */
 /* the fixture                                                        */
@@ -223,7 +225,11 @@ function startAJob() {
 	}, 250);
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+createRoot(document.getElementById("root")).render(
+	<MotionRoot>
+		<App />
+	</MotionRoot>,
+);
 
 if (document.readyState === "complete") {
 	setTimeout(startAJob, 600);

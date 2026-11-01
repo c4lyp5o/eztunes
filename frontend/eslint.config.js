@@ -39,4 +39,10 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+	// The ez kit exports helpers next to components (cx, btn, motion presets);
+	// fast refresh does a full reload for those files instead.
+	{
+		files: ["src/ez/**/*.{js,jsx}"],
+		rules: { "react-refresh/only-export-components": "off" },
+	},
 ])
