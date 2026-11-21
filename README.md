@@ -154,7 +154,7 @@ the full set; the ones you are most likely to touch:
 
 ```bash
 cd backend && bun test        # 111 tests; silence.test.js needs ffmpeg on PATH
-cd frontend && bun run lint
+bun run lint                  # Biome, from the repo root
 ```
 
 The suite covers the security properties directly: unauthenticated access
@@ -188,3 +188,7 @@ otherwise).
 ## Licence
 
 [MIT](LICENSE).
+
+## Development
+
+Setup, commands, tests, linting and the `development` → `master` release flow are in [DEVELOPER.md](DEVELOPER.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).

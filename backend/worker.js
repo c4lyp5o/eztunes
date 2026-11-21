@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import archiver from "archiver";
+import { ZipArchive } from "archiver";
 import youtubedl from "youtube-dl-exec";
 
 import logger from "./logger.js";
@@ -729,7 +729,7 @@ async function processAudioPipeline(videoUrl, jobId, clientId, expectedTracks) {
 		// already compressed, so deflate has almost nothing to gain and
 		// level 9 spends real CPU trying. Measured on 100MB of tracks:
 		// level 9 was 1.7x slower than level 6 for a 1.2% smaller file.
-		const archive = archiver("zip", { zlib: { level: 6 } });
+		const archive = new ZipArchive({ zlib: { level: 6 } });
 
 		output.on("close", resolve);
 		archive.on("error", reject);
