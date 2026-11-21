@@ -4,6 +4,8 @@ All notable changes to eztunes are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-22
+
 ### Changed
 - Dependencies updated (majors kept only where the tests passed), Docker image on oven/bun 1.4.5, Biome as the linter, and the shared ez favicon.
 
