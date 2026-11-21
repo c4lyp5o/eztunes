@@ -6,7 +6,7 @@
 Split a YouTube upload into individual tagged MP3 tracks, and download them
 as a ZIP.
 
-Version **1.0.0**. The running version is shown in the app's footer.
+Version **1.0.1**. The running version is shown in the app's footer.
 
 **How it works:** a worker downloads the audio with yt-dlp, finds the gaps
 between tracks with ffmpeg's `silencedetect`, cuts the audio at those
