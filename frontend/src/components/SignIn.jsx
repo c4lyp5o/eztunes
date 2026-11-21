@@ -50,7 +50,7 @@ export default function SignIn({ onSignIn }) {
 				<ThemeToggle compact />
 			</div>
 			<Screen className="relative w-full max-w-sm rounded-xl border border-line bg-surface p-8">
-				<Brand name="eztunes" glyph="tn" />
+				<Brand name="eztunes" />
 				<h1 className="mt-6 text-[20px] font-semibold text-ink">Open the splitter</h1>
 				<p className="mt-2 text-[13px] text-mute">
 					Split a long recording into named tracks. The token is exchanged for a session cookie and is never stored in
