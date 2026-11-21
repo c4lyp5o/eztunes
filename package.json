@@ -26,6 +26,6 @@
 		"docker:logs": "docker compose logs -f"
 	},
 	"devDependencies": {
-		"concurrently": "^9.2.5"
+		"concurrently": "^10.0.7"
 	}
 }
