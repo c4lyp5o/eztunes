@@ -1,7 +1,7 @@
 # ===========================
 # Stage 1: frontend builder
 # ===========================
-FROM oven/bun:1.3.14-alpine AS builder
+FROM oven/bun:1.4.5-alpine AS builder
 WORKDIR /app
 
 # Dependencies first: this layer is cached until package.json changes.
@@ -15,7 +15,7 @@ RUN cd frontend && bun run build
 # ===========================
 # Stage 2: backend deps
 # ===========================
-FROM oven/bun:1.3.14-alpine AS deps
+FROM oven/bun:1.4.5-alpine AS deps
 WORKDIR /app
 
 COPY backend/package.json backend/bun.lock ./backend/
@@ -25,7 +25,7 @@ RUN cd backend && bun install --frozen-lockfile --production
 # ===========================
 # Stage 3: runtime
 # ===========================
-FROM oven/bun:1.3.14-alpine
+FROM oven/bun:1.4.5-alpine
 WORKDIR /app
 
 ENV TZ=Asia/Kuala_Lumpur

@@ -14,7 +14,7 @@
 		"dev": "conc -n \"BACKEND,WORKER,FRONTEND\" -c \"cyan,yellow,magenta\" \"npm run dev:backend\" \"npm run dev:worker\" \"npm run dev:frontend\"",
 		"test": "cd backend && bun test",
 		"test:backend": "cd backend && bun test",
-		"lint": "cd frontend && bun run lint",
+		"lint": "biome lint .",
 		"build:client": "cd frontend && bun run build",
 		"start": "pm2-runtime start ecosystem.config.js --env production",
 		"stop": "pm2 stop all",
@@ -23,9 +23,11 @@
 		"docker:build": "docker compose build",
 		"docker:up": "docker compose up -d",
 		"docker:down": "docker compose down",
-		"docker:logs": "docker compose logs -f"
+		"docker:logs": "docker compose logs -f",
+		"lint:fix": "biome lint --write ."
 	},
 	"devDependencies": {
-		"concurrently": "^10.0.7"
+		"concurrently": "^10.0.7",
+		"@biomejs/biome": "2.6.8"
 	}
 }
