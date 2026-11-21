@@ -283,7 +283,7 @@ export default function App() {
 
 	return (
 		<Shell
-			brand={<Brand name="eztunes" glyph="tn" scope="Splits videos into tracks" />}
+			brand={<Brand name="eztunes" scope="Splits videos into tracks" />}
 			topbarActions={
 				<button
 					type="button"

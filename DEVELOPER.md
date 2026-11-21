@@ -42,3 +42,27 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org) (`fix
 ## Docker
 
 The image is built from `Dockerfile` on `oven/bun:1.4.5-alpine`. Keep the Bun version there and `bun-version` in `.github/workflows/` in step, and smoke-test a locally built image (`docker build -t eztunes .`) after changing either.
+
+## Backend layout
+
+| File | Role |
+|---|---|
+| `config.js` | Every secret, path and bind address, resolved once at boot |
+| `auth.js` | Session signing, cookies, the internal broadcast token |
+| `paths.js` | Path containment and filename sanitising |
+| `db.js` | The jobs table (SQLite via `bun:sqlite`, WAL mode) |
+| `server.js` | HTTP API, WebSocket progress, serves `frontend/dist` |
+| `worker.js` | Claims queued jobs and runs the pipeline |
+| `silence.js` | ffmpeg `silencedetect` parsing and cut-point selection |
+| `progress.js` | The progress message shape shared by worker and server |
+| `concurrency.js` | Bounded parallelism for the per-track steps |
+| `sweep.js` | Removes dead, stuck and expired jobs |
+| `logger.js` | The shared `deadslog` logger |
+
+## Frontend
+
+React 19 + Vite, Tailwind v4 and the shared ez kit (`src/ez/`), Motion for transitions and a three.js backdrop. Dark is the default theme; the choice is stored under `ez.theme`.
+
+`preview.html` renders every screen state with fake data, without a backend: open `http://localhost:3000/preview.html` while `bun dev` runs.
+
+The footer shows `version` from `frontend/package.json`, injected at build time as `__APP_VERSION__` (see `vite.config.js`).
