@@ -44,3 +44,12 @@ coverage/
 .DS_Store
 .vscode/
 .idea/
+
+# ez standard
+.git
+.github
+**/node_modules
+**/.env.*
+!**/.env.example
+**/*.log
+coverage

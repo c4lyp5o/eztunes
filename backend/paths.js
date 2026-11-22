@@ -53,7 +53,7 @@ export function isSafeFileName(name) {
 	if (name.includes("/") || name.includes("\\")) return false;
 	if (name.includes("\0")) return false;
 	if (path.basename(name) !== name) return false;
-	// eslint-disable-next-line no-control-regex
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
 	if (/[\x00-\x1f\x7f]/.test(name)) return false;
 	return true;
 }
@@ -67,7 +67,7 @@ export function isSafeFileName(name) {
  */
 export function sanitizeFileName(input, fallback = "track") {
 	const cleaned = String(input ?? "")
-		// eslint-disable-next-line no-control-regex
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
 		.replace(/[\x00-\x1f\x7f]/g, "")
 		.replace(/[/\\?%*:|"<>]/g, "-")
 		// Shell metacharacters that a title has no business containing. The
@@ -98,7 +98,7 @@ export function sanitizeFileName(input, fallback = "track") {
  */
 export function sanitizeForShell(value) {
 	return String(value ?? "")
-		// eslint-disable-next-line no-control-regex
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
 		.replace(/[\x00-\x1f\x7f]/g, "")
 		.replace(/["`$;&|<>^!(){}[\]*?~#]/g, "")
 		.trim()

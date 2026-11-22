@@ -12,12 +12,9 @@ services:
     container_name: eztunes
     restart: unless-stopped
 
-    # NOTE: no `user:` override here on purpose. The image's entrypoint
-    # starts as root so it can fix the ownership of the data volume (Docker
-    # creates a missing bind-mount source as root, which would otherwise
-    # leave the app unable to open its own SQLite file), then drops to the
-    # unprivileged `bun` user for the app itself. Overriding the user here
-    # would defeat that and hand the app root.
+    # The image runs as the unprivileged `bun` user (uid 1000). A named volume
+    # works as is; a bind-mounted data folder must be owned by uid 1000
+    # (`sudo chown -R 1000:1000 ./data`), or the app cannot open its SQLite file.
 
     ports:
       # Overridable so a second instance (staging, a test) does not have to
@@ -47,7 +44,6 @@ services:
       # Storage - the /data volume below.
       DATA_DIR: /data
       OUTPUT_DIR: /data/blackhole
-      DB_PATH: /data/eztunes.sqlite
 
       # The built frontend, served by the server process.
       FRONTEND_DIR: /app/frontend/dist
