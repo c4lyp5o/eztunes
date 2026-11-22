@@ -166,11 +166,13 @@ written in.
 
 ### Continuous integration
 
-`test.yml` runs on pull requests, pushes to `development` and on demand. It
+`test.yml` runs on pull requests and on demand, and `publish.yml` runs it before
+every publish. It
 installs ffmpeg, runs the backend suite, builds and lints the frontend, scans
 the tree for credential-shaped literals, and builds, boots and health-checks
 the Docker image. `publish.yml` calls it as a gate and only then pushes to
-`ghcr.io/c4lyp5o/eztunes`.
+`ghcr.io/c4lyp5o/eztunes` (`:development` from `development`, `:latest` and
+`:<version>` from `master`).
 
 ---
 
