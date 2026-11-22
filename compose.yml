@@ -44,7 +44,6 @@ services:
       # Storage - the /data volume below.
       DATA_DIR: /data
       OUTPUT_DIR: /data/blackhole
-      DB_PATH: /data/eztunes.sqlite
 
       # The built frontend, served by the server process.
       FRONTEND_DIR: /app/frontend/dist
