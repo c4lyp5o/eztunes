@@ -46,7 +46,7 @@ RUN cd backend && bun install --production --frozen-lockfile --ignore-scripts
 COPY backend/*.js ./backend/
 COPY package.json ecosystem.config.js ./
 COPY --from=build /app/frontend/dist ./frontend/dist
-RUN mkdir -p /data /data/blackhole /app/logs && chown -R bun:bun /data /data/blackhole /app/logs
+RUN mkdir -p /data /data/blackhole /data/logs && chown -R bun:bun /data /data/blackhole /data/logs
 USER bun
 VOLUME ["/data"]
 EXPOSE 5000

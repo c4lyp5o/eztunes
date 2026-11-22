@@ -29,6 +29,7 @@ module.exports = {
 			// independently is still the right shape.
 			max_memory_restart: "512M",
 			env: {
+				EZ_LOG_NAME: "server",
 				NODE_ENV: "development",
 			},
 		},
@@ -45,6 +46,7 @@ module.exports = {
 			// them.
 			max_memory_restart: "2G",
 			env: {
+				EZ_LOG_NAME: "worker",
 				NODE_ENV: "development",
 			},
 		},
