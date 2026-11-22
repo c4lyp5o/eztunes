@@ -1,7 +1,7 @@
 # eztunes
 
-[![Test](https://github.com/c4lyp5o/eztunes/actions/workflows/test.yml/badge.svg)](https://github.com/c4lyp5o/eztunes/actions/workflows/test.yml)
-[![Build & Push Docker Image](https://github.com/c4lyp5o/eztunes/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/c4lyp5o/eztunes/actions/workflows/docker-publish.yml)
+[![test](https://github.com/c4lyp5o/eztunes/actions/workflows/test.yml/badge.svg)](https://github.com/c4lyp5o/eztunes/actions/workflows/test.yml)
+[![publish](https://github.com/c4lyp5o/eztunes/actions/workflows/publish.yml/badge.svg)](https://github.com/c4lyp5o/eztunes/actions/workflows/publish.yml)
 
 Split a YouTube upload into individual tagged MP3 tracks, and download them
 as a ZIP.
@@ -104,8 +104,8 @@ frontend/
   src/ez/               the shared ez design kit (shell, motion, 3D backdrop)
   preview.html          a design harness that renders every state with fake data
 .github/workflows/
-  test.yml              tests, build, lint, secret scan, image build
-  docker-publish.yml    runs test.yml, then pushes the image to GHCR
+  test.yml              lint, tests, build, secret scan, image boot + health
+  publish.yml           runs test.yml, then pushes the image to GHCR
 ```
 
 The server and the worker are **separate processes** sharing one SQLite
@@ -166,13 +166,11 @@ written in.
 
 ### Continuous integration
 
-`test.yml` runs on every push to `master`, on pull requests, and on
-demand. It installs ffmpeg, runs the backend suite, builds and lints the
-frontend, scans the tree for credential-shaped literals, and builds the
-Docker image. `docker-publish.yml` calls it as a gate and only pushes to
-`ghcr.io/c4lyp5o/eztunes` when it passes. Images are tagged `latest` plus
-the output of `git describe` (the tag name on a release, the short SHA
-otherwise).
+`test.yml` runs on pull requests, pushes to `development` and on demand. It
+installs ffmpeg, runs the backend suite, builds and lints the frontend, scans
+the tree for credential-shaped literals, and builds, boots and health-checks
+the Docker image. `publish.yml` calls it as a gate and only then pushes to
+`ghcr.io/c4lyp5o/eztunes`.
 
 ---
 
@@ -180,8 +178,9 @@ otherwise).
 
 1. Bump `version` in `package.json`, `frontend/package.json` and
    `backend/package.json` (the footer reads `frontend/package.json`).
-2. Commit, then tag: `git tag v1.2.3 && git push origin master v1.2.3`.
-3. The tag build publishes `ghcr.io/c4lyp5o/eztunes:v1.2.3`.
+2. Merge `development` into `master`. `publish.yml` pushes
+   `ghcr.io/c4lyp5o/eztunes:<version>`, `:latest` and `:sha-<commit>`.
+3. Optional: tag `vX.Y.Z` for a GitHub Release with the changelog notes.
 
 ---
 
