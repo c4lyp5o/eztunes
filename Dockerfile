@@ -24,7 +24,6 @@ ENV TZ=Asia/Kuala_Lumpur \
 	PORT=5000 \
 	DATA_DIR=/data \
 	OUTPUT_DIR=/data/blackhole \
-	DB_PATH=/data/eztunes.sqlite \
 	FRONTEND_DIR=/app/frontend/dist \
 	FFMPEG_PATH=/usr/bin/ffmpeg \
 	BROADCAST_URL=http://127.0.0.1:5000/api/internal/broadcast \
